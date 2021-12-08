@@ -13,8 +13,11 @@ import wave
 import webrtcvad
 from halo import Halo
 from scipy import signal
+from rpunct import RestorePuncts
+
 
 logging.basicConfig(level=20)
+rpunct = RestorePuncts()
 
 
 class Audio(object):
@@ -113,7 +116,7 @@ class Audio(object):
 class VADAudio(Audio):
     """Filter & segment audio with voice activity detection."""
 
-    def __init__(self, aggressiveness=3, device=None, input_rate=None, file=None):
+    def __init__(self, aggressiveness=0, device=None, input_rate=None, file=None):
         super().__init__(device=device, input_rate=input_rate, file=file)
         self.vad = webrtcvad.Vad(aggressiveness)
 
@@ -143,36 +146,45 @@ class VADAudio(Audio):
                 return
 
             is_speech = self.vad.is_speech(frame, self.sample_rate)
+            
+            yield frame
+            ring_buffer.append((frame, is_speech))
+            num_unvoiced = len(
+                [f for f, speech in ring_buffer if not speech])
+            if num_unvoiced > ratio * ring_buffer.maxlen:
+                triggered = False
+                yield None
+                ring_buffer.clear()
 
-            if not triggered:
-                ring_buffer.append((frame, is_speech))
-                num_voiced = len([f for f, speech in ring_buffer if speech])
-                if num_voiced > ratio * ring_buffer.maxlen:
-                    triggered = True
-                    for f, s in ring_buffer:
-                        yield f
-                    ring_buffer.clear()
 
-            else:
-                yield frame
-                ring_buffer.append((frame, is_speech))
-                num_unvoiced = len(
-                    [f for f, speech in ring_buffer if not speech])
-                if num_unvoiced > ratio * ring_buffer.maxlen:
-                    triggered = False
-                    yield None
-                    ring_buffer.clear()
+# key writer and converter
+textBuffer = ""
+
+
+def keyWriter(text):
+    """Write the input via key strokes to the screen
+
+    Args:
+        text (string): text to write
+    """
+    from pyKey import sendSequence
+    global textBuffer
+
+    wordCount = len(text.split())
+
+    if wordCount > 3:
+        textBuffer = textBuffer.split(".")[-1]
+        oldText = textBuffer
+        textBuffer += " "+rpunct.punctuate(text, lang='en')
+        text = textBuffer.replace(oldText, "")
+
+    sendSequence(text)
 
 
 def main(ARGS):
     # Load DeepSpeech model
-    ARGS.model = "/run/media/max/ImpSSD/Development/deepspeach/mozzilamodel/"
-    if os.path.isdir(ARGS.model):
-        model_dir = ARGS.model
-        # ARGS.model = os.path.join(model_dir, 'output_graph.pb')
-        ARGS.model = "/run/media/max/ImpSSD/Development/deepspeach/mozzilamodel/deepspeech-0.9.3-models.pbmm"
-        # ARGS.scorer = os.path.join(model_dir, ARGS.scorer)
-        ARGS.scorer = "/run/media/max/ImpSSD/Development/deepspeach/mozzilamodel/deepspeech-0.9.3-models.scorer"
+    ARGS.model = "./moz.pbmm"
+    ARGS.scorer = "./moz.scorer"
 
     print('Initializing model...')
     logging.info("ARGS.model: %s", ARGS.model)
@@ -212,7 +224,9 @@ def main(ARGS):
                     "savewav_%Y-%m-%d_%H-%M-%S_%f.wav")), wav_data)
                 wav_data = bytearray()
             text = stream_context.finishStream()
-            print("Recognized: %s" % text)
+            if text != "":
+                print("Recognized: %s" % text)
+                keyWriter(text)
             stream_context = model.createStream()
 
 
@@ -242,6 +256,7 @@ if __name__ == '__main__':
                         help=f"Input device sample rate. Default: {DEFAULT_SAMPLE_RATE}. Your device may require 44100.")
 
     ARGS = parser.parse_args()
+    ARGS.nospinner = True
     if ARGS.savewav:
         os.makedirs(ARGS.savewav, exist_ok=True)
     main(ARGS)
