@@ -20,7 +20,7 @@ You also needs to download scoring and the model files from mozilla.
  
 You can install the entire application using the following commands.
 ``` bash
-git clone ...
+git clone https://github.com/MaxAFriedrich/deepkey
 cd deepkey
 sudo apt install portaudio19-dev xdotool
 pip install -r requirements.txt
