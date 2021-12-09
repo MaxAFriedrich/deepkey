@@ -1,4 +1,4 @@
-# Microphone VAD Streaming
+# Deepkey
 
 This is a modified version of the example project [from mozila here](https://github.com/mozilla/DeepSpeech-examples/tree/r0.9/mic_vad_streaming). This version is designed to allow you to dictate passages with automatic punctuation.
 
