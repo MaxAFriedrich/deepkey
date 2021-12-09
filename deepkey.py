@@ -116,9 +116,9 @@ class Audio(object):
 class VADAudio(Audio):
     """Filter & segment audio with voice activity detection."""
 
-    def __init__(self, aggressiveness=0, device=None, input_rate=None):
+    def __init__(self, device=None, input_rate=None):
         super().__init__(device=device, input_rate=input_rate)
-        self.vad = webrtcvad.Vad(aggressiveness)
+        self.vad = webrtcvad.Vad(0)
 
     def frame_generator(self):
         """Generator that yields all audio frames from microphone."""
@@ -129,7 +129,7 @@ class VADAudio(Audio):
             while True:
                 yield self.read_resampled()
 
-    def vad_collector(self, padding_ms=300, ratio=0.75, frames=None):
+    def vad_collector(self, padding_ms, ratio, frames=None):
         """Generator that yields series of consecutive audio frames comprising each utterence, separated by yielding a single None.
             Determines voice activity by ratio of frames in padding_ms. Uses a buffer to include padding_ms prior to being triggered.
             Example: (frame, ..., frame, None, frame, ..., frame, None, ...)
@@ -142,11 +142,10 @@ class VADAudio(Audio):
         triggered = False
 
         for frame in frames:
-            if len(frame) < 640:
-                return
+            # if len(frame) < 640:
+            #     return
 
             is_speech = self.vad.is_speech(frame, self.sample_rate)
-
             yield frame
             ring_buffer.append((frame, is_speech))
             num_unvoiced = len(
@@ -172,7 +171,7 @@ def keyWriter(text):
 
     wordCount = len(text.split())
 
-    if wordCount > 3:
+    if wordCount > 2:
         textBuffer = textBuffer.split(".")[-1]
         oldText = textBuffer
         textBuffer += " "+rpunct.punctuate(text, lang='en')
@@ -191,11 +190,10 @@ def main(SETTINGS):
         model.enableExternalScorer(SETTINGS["scorer"])
 
     # Start audio with VAD
-    vad_audio = VADAudio(aggressiveness=0,
-                         device=SETTINGS["device"],
+    vad_audio = VADAudio(device=SETTINGS["device"],
                          input_rate=SETTINGS["rate"])
     print("Listening (ctrl-C to exit)...")
-    frames = vad_audio.vad_collector()
+    frames = vad_audio.vad_collector(SETTINGS["padding"], SETTINGS["ratio"])
 
     # Stream from microphone to DeepSpeech using VAD
     stream_context = model.createStream()
@@ -214,11 +212,30 @@ def main(SETTINGS):
 
 
 if __name__ == '__main__':
-    SETTINGS = {
-        "model": "./moz.pbmm",
-        "scorer": "./moz.scorer",
-        "device": 6,
-        "rate": 16000
-    }
-    # TODO custom settings
+    from yaml import load
+    try:
+        with open("settings.yml", "r") as file:
+            SETTINGS = load(file.read())
+            if len(SETTINGS) != 6:
+                SETTINGS = {
+                    "model": "./moz.pbmm",
+                    "scorer": "./moz.scorer",
+                    "device": 6,
+                    "rate": 16000,
+                    "padding": 3000,
+                    "ratio": 0.5
+                }
+                logging.error("Incorrect settings fromating, reverting to defaults.")
+            else:
+                logging.info("Loaded settings from file.")
+    except:
+        SETTINGS = {
+            "model": "./moz.pbmm",
+            "scorer": "./moz.scorer",
+            "device": 6,
+            "rate": 16000,
+            "padding": 3000,
+            "ratio": 0.5
+        }
+        logging.error("Incorrect settings fromating, reverting to defaults.")
     main(SETTINGS)
