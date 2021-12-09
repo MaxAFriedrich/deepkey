@@ -225,7 +225,8 @@ if __name__ == '__main__':
                     "padding": 3000,
                     "ratio": 0.5
                 }
-                logging.error("Incorrect settings fromating, reverting to defaults.")
+                logging.error(
+                    "Incorrect settings fromating, reverting to defaults.")
             else:
                 logging.info("Loaded settings from file.")
     except:
